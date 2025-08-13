@@ -1,0 +1,155 @@
+name: Wheel build
+
+on:
+  # release:
+    # types: [created]
+  # schedule:
+  #        ┌───────────── minute (0 - 59)
+  #        │  ┌───────────── hour (0 - 23)
+  #        │  │ ┌───────────── day of the month (1 - 31)
+  #        │  │ │ ┌───────────── month (1 - 12 or JAN-DEC)
+  #        │  │ │ │ ┌───────────── day of the week (0 - 6 or SUN-SAT)
+  #        │  │ │ │ │
+  # - cron: "42 3 * * 4"
+  push:
+  # pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_name != 'master' }}
+
+permissions: {}
+
+jobs:
+  build_wheels:
+    name: Build wheel for ${{ matrix.archs }} ${{ matrix.build }} (runs on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04]
+        archs: [x86_64, ppc64le, s390x]
+        build: [manylinux]
+        include:
+            - os: ubuntu-24.04-arm
+              archs: aarch64
+              build: manylinux
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch build
+        run: |
+          wget -qO - https://github.com/pypdfium2-team/pypdfium2/pull/369.patch | patch -p1
+          sudo mkdir -p /tmp/cache/ccache
+          sudo chown -R root:docker /tmp/cache/ccache
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v3.1.3
+        env:
+          CIBW_ARCHS: ${{ matrix.archs }}
+          CIBW_BUILD: "*-${{ matrix.build }}_${{ matrix.archs }}"
+          CIBW_BEFORE_ALL_LINUX: |
+            yum -y install gn ninja-build freetype-devel glib2-devel lcms2-devel libjpeg-devel libpng-devel libtiff-devel openjpeg2-devel zlib-devel && \
+            ln -s /opt/rh/gcc-toolset-14/root/bin/gcc /opt/rh/gcc-toolset-14/root/bin/${{ matrix.archs }}-linux-gnu-gcc && \
+            ln -s /opt/rh/gcc-toolset-14/root/bin/g++ /opt/rh/gcc-toolset-14/root/bin/${{ matrix.archs }}-linux-gnu-g++ && \
+            ln -s /opt/rh/gcc-toolset-14/root/bin/readelf /opt/rh/gcc-toolset-14/root/bin/${{ matrix.archs }}-linux-gnu-readelf && \
+            ln -s /opt/rh/gcc-toolset-14/root/bin/nm /opt/rh/gcc-toolset-14/root/bin/${{ matrix.archs }}-linux-gnu-nm
+          CIBW_BEFORE_BUILD_LINUX: python setupsrc/pypdfium2_setup/build_native.py --vendor icu
+          CIBW_ENVIRONMENT_LINUX: PDFIUM_PLATFORM=sourcebuild
+          CIBW_ENVIRONMENT_PASS_LINUX: PIP_EXTRA_INDEX_URL
+          CIBW_TEST_COMMAND: python -m pypdfium2 --version
+        with:
+          output-dir: wheelhouse
+
+      - uses: actions/upload-artifact@v4
+        with:
+          path: ./wheelhouse/*.whl
+          name: pypdfium2-wheel-${{ matrix.archs }}
+
+  build_wheels_loongarch64:
+    name: Build wheel for ${{ matrix.archs }} ${{ matrix.build }} (runs on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04]
+        archs: [loongarch64]
+        build: [manylinux]
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch build
+        run: |
+          wget -qO - https://github.com/pypdfium2-team/pypdfium2/pull/369.patch | patch -p1
+          sudo mkdir -p /tmp/cache/ccache
+          sudo chown -R root:docker /tmp/cache/ccache
+          echo "PIP_EXTRA_INDEX_URL=https://gitlab.com/api/v4/projects/65746188/packages/pypi/simple" >> $GITHUB_ENV
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build wheels
+        uses: loong64/cibuildwheel@v3.1.3
+        env:
+          CIBW_ARCHS: ${{ matrix.archs }}
+          CIBW_BUILD: "*-${{ matrix.build }}_${{ matrix.archs }}"
+          CIBW_BEFORE_ALL_LINUX: |
+            yum -y install ninja-build freetype-devel glib2-devel lcms2-devel libjpeg-devel libpng-devel libtiff-devel openjpeg2-devel zlib-devel && \
+            curl -L https://github.com/loong64/gn/releases/latest/download/gn-linux-${{ matrix.archs }}.tar.gz | tar xz -C /usr/local/bin && \
+            ln -s /opt/rh/gcc-toolset-14/root/bin/gcc /opt/rh/gcc-toolset-14/root/bin/${{ matrix.archs }}-unknown-linux-gnu-gcc && \
+            ln -s /opt/rh/gcc-toolset-14/root/bin/g++ /opt/rh/gcc-toolset-14/root/bin/${{ matrix.archs }}-unknown-linux-gnu-g++ && \
+            ln -s /opt/rh/gcc-toolset-14/root/bin/readelf /opt/rh/gcc-toolset-14/root/bin/${{ matrix.archs }}-unknown-linux-gnu-readelf && \
+            ln -s /opt/rh/gcc-toolset-14/root/bin/nm /opt/rh/gcc-toolset-14/root/bin/${{ matrix.archs }}-unknown-linux-gnu-nm
+          CIBW_BEFORE_BUILD_LINUX: python setupsrc/pypdfium2_setup/build_native.py --vendor icu
+          CIBW_ENVIRONMENT_LINUX: PDFIUM_PLATFORM=sourcebuild
+          CIBW_ENVIRONMENT_PASS_LINUX: PIP_EXTRA_INDEX_URL
+          CIBW_TEST_COMMAND: python -m pypdfium2 --version
+        with:
+          output-dir: wheelhouse
+
+      - uses: actions/upload-artifact@v4
+        with:
+          path: ./wheelhouse/*.whl
+          name: pypdfium2-wheel-${{ matrix.archs }}
+
+  test_wheels:
+    name: Test wheel for ${{ matrix.archs }} (runs on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [ build_wheels, build_wheels_loongarch64 ]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04]
+        archs: [x86_64]
+        include:
+            - os: ubuntu-24.04-arm
+              archs: aarch64
+
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Download wheel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pypdfium2-wheel-${{ matrix.archs }}
+          path: wheelhouse
+
+      - name: Test wheels
+        run: |
+          pip install ./wheelhouse/*.whl
+          python -m pypdfium2 --version
