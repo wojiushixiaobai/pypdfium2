@@ -69,26 +69,40 @@ before-all = [
 ]
 
 [[tool.cibuildwheel.overrides]]
-select = "*-manylinux_{aarch64,loongarch64}"
+select = "*-manylinux_aarch64"
 inherit.before-all = "append"
 before-all = ["export GCC_ROOT=/opt/rh/gcc-toolset-14/root"]
 
 [[tool.cibuildwheel.overrides]]
-select = "*-manylinux_riscv64 *-musllinux_{aarch64,armv7l,riscv64,loongarch64}"
+select = "**-musllinux_{aarch64,armv7l}"
 inherit.before-all = "append"
 before-all = ["export GCC_ROOT=/usr"]
 
 [[tool.cibuildwheel.overrides]]
+select = "*-*linux_{loongarch64,ppc64le,s390x,riscv64}"
+inherit.before-all = "append"
+before-all = [
+    "export GCC_ROOT=/opt/clang",
+    "bash ./utils/install-static-clang.sh",
+    "ln -s $GCC_ROOT/bin/clang $GCC_ROOT/bin/gcc",
+    "ln -s $GCC_ROOT/bin/clang++ $GCC_ROOT/bin/g++",
+]
+inherit.environment = "prepend"
+environment = { CC = "/opt/clang/bin/clang", CXX = "/opt/clang/bin/clang++", LDFLAGS = "-fuse-ld=lld -Wl,--build-id" }
+inherit.environment-pass = "prepend"
+environment-pass = ["RUNNER_ARCH"]
+
+[[tool.cibuildwheel.overrides]]
 # this select must be a union of the above two selects
-select = "*-*linux_{aarch64,riscv64,loongarch64} *-musllinux_armv7l"
+select = "*-*linux_{aarch64,loongarch64,riscv64} *-musllinux_armv7l"
 inherit.before-all = "append"
 before-all = [
     "export PREFIX=$(python {package}/utils/get_gcc_prefix.py)",
-    "ln -s $GCC_ROOT/bin/gcc $GCC_ROOT/bin/$PREFIX-gcc",
-    "ln -s $GCC_ROOT/bin/g++ $GCC_ROOT/bin/$PREFIX-g++",
-    "ln -s $GCC_ROOT/bin/nm $GCC_ROOT/bin/$PREFIX-nm",
-    "ln -s $GCC_ROOT/bin/readelf $GCC_ROOT/bin/$PREFIX-readelf",
-    "ln -s $GCC_ROOT/bin/ar $GCC_ROOT/bin/$PREFIX-ar",
+    "ln -s $GCC_ROOT/bin/gcc /usr/local/bin/$PREFIX-gcc",
+    "ln -s $GCC_ROOT/bin/g++ /usr/local/bin/$PREFIX-g++",
+    "ln -s $GCC_ROOT/bin/nm /usr/local/bin/$PREFIX-nm",
+    "ln -s $GCC_ROOT/bin/readelf /usr/local/bin/$PREFIX-readelf",
+    "ln -s $GCC_ROOT/bin/ar /usr/local/bin/$PREFIX-ar",
     "unset PREFIX GCC_ROOT",
 ]
 
