@@ -19,7 +19,7 @@ on:
         default: true
         type: boolean
       linux_s390x:
-        default: false
+        default: true
         type: boolean
       linux_glibc:
         default: true
@@ -160,7 +160,7 @@ jobs:
       cibw_arch: s390x
       emulated: true
       cibw_py_ver: ${{ inputs.cibw_py_ver }}
-      test_pdfium: false  # ${{ inputs.test_pdfium }}
+      test_pdfium: ${{ inputs.test_pdfium }}
   
   musllinux_s390x:
     if: ${{ inputs.linux_s390x && inputs.linux_musl }}
@@ -171,7 +171,7 @@ jobs:
       cibw_arch: s390x
       emulated: true
       cibw_py_ver: ${{ inputs.cibw_py_ver }}
-      test_pdfium: false  # ${{ inputs.test_pdfium }}
+      test_pdfium: ${{ inputs.test_pdfium }}
   
   linux_riscv64:
     if: ${{ inputs.linux_clangcross && inputs.linux_glibc }}

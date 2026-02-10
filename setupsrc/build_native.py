@@ -230,6 +230,8 @@ def get_sources(deps_info, short_ver, with_tests, compiler, clang_ver, clang_pat
             )
             if no_libclang_rt:
                 git_apply_patch(PatchDir/"no_libclang_rt.patch", cwd=PDFIUM_DIR_build)
+            if Host._libc_name == "musl":
+                git_apply_patch(PatchDir/"build_musl.patch", cwd=PDFIUM_DIR_build)
         # Create an empty gclient config
         (PDFIUM_DIR_build/"config"/"gclient_args.gni").touch(exist_ok=True)
     
@@ -282,6 +284,10 @@ def _get_clang_ver(clang_path):
     log(f"Determined clang version {version!r}")
     return version
 
+def setup_ccache(config, with_cache=False):
+    if with_cache:
+        config["cc_wrapper"] = "ccache"
+
 def setup_compiler(config, compiler, clang_ver, clang_path):
     if compiler is Compiler.gcc:
         config["is_clang"] = False
@@ -330,7 +336,7 @@ def test(build_dir, vendor_deps):
     run_cmd([build_dir/"pdfium_unittests"], cwd=PDFIUM_DIR, check=False)
 
 
-def main(build_ver=None, with_tests=False, n_jobs=None, compiler=None, clang_path=None, no_libclang_rt=False, reset=False, vendor_deps=None, compat=False):
+def main(build_ver=None, with_tests=False, with_cache=False, n_jobs=None, compiler=None, clang_path=None, no_libclang_rt=False, reset=False, vendor_deps=None, compat=False):
     
     if build_ver is None:
         build_ver = SBUILD_NATIVE_PIN
@@ -358,6 +364,7 @@ def main(build_ver=None, with_tests=False, n_jobs=None, compiler=None, clang_pat
     
     mkdir(SOURCES_DIR)
     full_ver = get_sources(deps_info, build_ver, with_tests, compiler, clang_ver, clang_path, no_libclang_rt, reset, vendor_deps, compat)
+    setup_ccache(config, with_cache)
     setup_compiler(config, compiler, clang_ver, clang_path)
     build(build_dir, config, with_tests, n_jobs)
     if with_tests:
@@ -391,6 +398,13 @@ For instance, it should also work on Android (Termux) natively. See the notes in
         action = "store_true",
         default = bool(int( os.environ.get("TEST_PDFIUM", 0) )),
         help = "Whether to build and run tests. Recommended, except on very slow hosts. (Defaults to the value of $TEST_PDFIUM, for passthrough with cibuildwheel.)",
+    )
+    parser.add_argument(
+        "--ccache",
+        dest = "with_cache",
+        action = "store_true",
+        default = bool(int( os.environ.get("USE_CCACHE", 0) )),
+        help = "Whether to use ccache if available. This can speed up repeated builds, but requires ccache to be installed and properly set up on the system.",
     )
     parser.add_argument(
         "-j", "--jobs",
